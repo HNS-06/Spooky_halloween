@@ -676,7 +676,36 @@
             const loading = document.getElementById('loading');
             const output = document.getElementById('output');
             
-            // Content examples database
+            // Backend API integration
+            async function generateWithAI(contentType, theme, userPrompt) {
+                try {
+                    const response = await fetch('http://localhost:3000/api/generate', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({
+                            contentType: contentType,
+                            theme: theme,
+                            userPrompt: userPrompt
+                        })
+                    });
+                    
+                    if (!response.ok) {
+                        const errorData = await response.json();
+                        throw new Error(errorData.error || 'Server error');
+                    }
+                    
+                    const data = await response.json();
+                    return data.content;
+                    
+                } catch (error) {
+                    console.error('Backend API Error:', error);
+                    throw new Error(`AI service unavailable: ${error.message}`);
+                }
+            }
+            
+            // Content examples database (fallback)
             const contentExamples = {
                 story: {
                     scary: [
@@ -744,8 +773,38 @@
                 }
             };
             
+            // Get fallback content
+            function getFallbackContent(contentType, theme, userPrompt) {
+                const themes = contentExamples[contentType];
+                if (!themes) {
+                    return `Get ready for an amazing ${contentType} with ${theme} theme! ${userPrompt ? `We'll include: ${userPrompt}` : 'Our AI is brewing something spooky for you!'}`;
+                }
+                
+                const themeContent = themes[theme] || themes.scary || themes[Object.keys(themes)[0]];
+                
+                if (!themeContent || themeContent.length === 0) {
+                    return `Get ready for an amazing ${contentType} with ${theme} theme! ${userPrompt ? `We'll include: ${userPrompt}` : 'Our AI is brewing something spooky for you!'}`;
+                }
+                
+                const randomItem = themeContent[Math.floor(Math.random() * themeContent.length)];
+                return randomItem;
+            }
+            
+            // Display content function
+            function displayContent(output, content, contentType, userPrompt) {
+                let formattedContent = content.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+                
+                if (userPrompt) {
+                    formattedContent += `<div style="margin-top: 20px; padding: 15px; background: rgba(255, 107, 53, 0.1); border-radius: 8px; border-left: 4px solid #ff6b35;">
+                        <strong>✨ Including your request:</strong> ${userPrompt}
+                    </div>`;
+                }
+                
+                output.innerHTML = `<div style="white-space: pre-line; line-height: 1.6;">${formattedContent}</div>`;
+            }
+            
             // Generate content function
-            generateBtn.addEventListener('click', function() {
+            async function generateContent() {
                 const contentType = document.getElementById('contentType').value;
                 const theme = document.getElementById('theme').value;
                 const userPrompt = document.getElementById('prompt').value;
@@ -754,35 +813,23 @@
                 loading.style.display = 'block';
                 output.innerHTML = '';
                 
-                // Simulate AI processing time
-                setTimeout(() => {
-                    // Get content from examples
-                    const themes = contentExamples[contentType];
-                    let content;
+                try {
+                    console.log("Sending request to backend...");
+                    const aiContent = await generateWithAI(contentType, theme, userPrompt);
                     
-                    if (themes && themes[theme] && themes[theme].length > 0) {
-                        const randomIndex = Math.floor(Math.random() * themes[theme].length);
-                        content = themes[theme][randomIndex];
-                    } else {
-                        content = `Get ready for an amazing ${contentType} with ${theme} theme! ${userPrompt ? `We'll include: ${userPrompt}` : 'Our AI is brewing something spooky for you!'}`;
-                    }
+                    console.log("✅ Backend Response received");
+                    displayContent(output, aiContent, contentType, userPrompt);
                     
-                    // Format content with user prompt
-                    let formattedContent = content.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
-                    
-                    if (userPrompt) {
-                        formattedContent += `<div style="margin-top: 20px; padding: 15px; background: rgba(255, 107, 53, 0.1); border-radius: 8px; border-left: 4px solid #ff6b35;">
-                            <strong>✨ Including your request:</strong> ${userPrompt}
-                        </div>`;
-                    }
-                    
-                    // Display content
-                    output.innerHTML = `<div style="white-space: pre-line; line-height: 1.6;">${formattedContent}</div>`;
-                    
+                } catch (error) {
+                    console.log("❌ Backend failed, using fallback:", error.message);
+                    // Fallback to pre-made content
+                    const fallbackContent = getFallbackContent(contentType, theme, userPrompt);
+                    displayContent(output, fallbackContent, contentType, userPrompt);
+                } finally {
                     // Hide loading
                     loading.style.display = 'none';
-                }, 1500);
-            });
+                }
+            }
             
             // Copy content function
             copyBtn.addEventListener('click', function() {
@@ -810,6 +857,9 @@
                     copyBtn.click();
                 }
             });
+            
+            // Attach generate function to button
+            generateBtn.addEventListener('click', generateContent);
         });
     </script>
 </body>
